@@ -1,11 +1,4 @@
 services:
-  tunnel:
-    container_name: cloudflared-tunnel
-    image: cloudflare/cloudflared
-    restart: always
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
   traefik:
     image: traefik:v3.1
     container_name: traefik
@@ -46,19 +39,25 @@ services:
       test: [ "CMD", "traefik", "healthcheck", "--ping" ]
       interval: 30s
       retries: 10
-  whoami:
-    image: traefik/whoami
-    container_name: whoami
+  
+  #ARR STACK
+  homarr:
+    container_name: homarr
+    image: ghcr.io/ajnart/homarr:latest
     restart: always
-    deploy:
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.whoami.rule=(Host(`${WHOAMI_HOSTNAME}`) || Host(`${WHOAMI_EXTERNAL_HOSTNAME}`))
-        - traefik.http.routers.whoami.tls=true
-        - traefik.http.routers.whoami.tls.certresolver=myresolver
-        - traefik.http.services.whoami.loadbalancer.server.port=80
-    networks:
-      - traefik
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Optional, only if you want docker integration
+      - ./homarr/configs:/app/data/configs
+      - ./homarr/icons:/app/public/icons
+      - ./homarr/data:/data
+    ports:
+      - '7575:7575'
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.homarr.rule=(Host(`${HOSTNAME}`))
+      - traefik.http.routers.homarr.tls=true
+      - traefik.http.routers.homarr.tls.certresolver=myresolver
+      - traefik.http.services.homarr.loadbalancer.server.port=7575
   sonarr:
     image: lscr.io/linuxserver/sonarr
     container_name: sonarr
@@ -124,41 +123,25 @@ services:
       - traefik.http.routers.bazarr.tls=true
       - traefik.http.routers.bazarr.tls.certresolver=myresolver
       - traefik.http.services.bazarr.loadbalancer.server.port=6767
-  jellyseerr:
-    image: fallenbagel/jellyseerr:latest
-    container_name: jellyseerr
-    environment:
-      - LOG_LEVEL=debug
-      - TZ=${TIMEZONE}
-    volumes:
-      - ${CONFIG_ROOT:-.}/jellyseerr:/app/config
-    restart: always
-    healthcheck:
-      test: ["CMD", "wget", "http://127.0.0.1:5055/api/v1/status", "-qO", "/dev/null"]
-      interval: 30s
-      retries: 10
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.jellyseerr.rule=(Host(`${JELLYSEERR_HOSTNAME}`))
-      - traefik.http.routers.jellyseerr.tls=true
-      - traefik.http.routers.jellyseerr.tls.certresolver=myresolver
-      - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
-  overseerr:
-    image: lscr.io/linuxserver/overseerr:latest
-    container_name: overseerr
+  readarr:
+    image: lscr.io/linuxserver/readarr:develop
+    container_name: readarr
     environment:
       - PUID=${USER_ID}
       - PGID=${GROUP_ID}
       - TZ=${TIMEZONE}
     volumes:
-      - ${CONFIG_ROOT:-.}/overseerr/config:/config
-    restart: always
+      - ${CONFIG_ROOT:-.}/readarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - 8787:8787
     labels:
       - traefik.enable=true
-      - traefik.http.routers.overseerr.rule=(Host(`${OVERSEERR_HOSTNAME}`))
-      - traefik.http.routers.overseerr.tls=true
-      - traefik.http.routers.overseerr.tls.certresolver=myresolver
-      - traefik.http.services.overseerr.loadbalancer.server.port=5055
+      - traefik.http.routers.readarr.rule=(Host(`${READARR_HOSTNAME}`))
+      - traefik.http.routers.readarr.tls=true
+      - traefik.http.routers.readarr.tls.certresolver=myresolver
+      - traefik.http.services.readarr.loadbalancer.server.port=8787
+    restart: always
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
@@ -254,6 +237,72 @@ services:
       - UN_READARR_0_API_KEY=${READARR_API_KEY}
     security_opt:
       - no-new-privileges:true
+  
+  #PLEX STACK
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - VERSION=docker
+      - PLEX_CLAIM=claim-qAY31PNjJn2msQ9ShPXb
+    volumes:
+      - ${CONFIG_ROOT:-.}/plex:/config
+      - ${DATA_ROOT}:/media
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:32400/web" ]
+      interval: 30s
+      retries: 10
+    ports:
+      - 32400:32400
+      - "1900:1900/udp"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.plex.rule=(Host(`${PLEX_HOSTNAME}`))
+      - traefik.http.routers.plex.tls=true
+      - traefik.http.routers.plex.tls.certresolver=myresolver
+      - traefik.http.services.plex.loadbalancer.server.port=32400
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/tautulli/config:/config
+    ports:
+      - 8181:8181
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tautulli.rule=(Host(`${TAUTULLI_HOSTNAME}`))
+      - traefik.http.routers.tautulli.tls=true
+      - traefik.http.routers.tautulli.tls.certresolver=myresolver
+      - traefik.http.services.tautulli.loadbalancer.server.port=8181
+    restart: always
+    profiles:
+      - plex
+  overseerr:
+    image: lscr.io/linuxserver/overseerr:latest
+    container_name: overseerr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/overseerr/config:/config
+    restart: always
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.overseerr.rule=(Host(`${OVERSEERR_HOSTNAME}`))
+      - traefik.http.routers.overseerr.tls=true
+      - traefik.http.routers.overseerr.tls.certresolver=myresolver
+      - traefik.http.services.overseerr.loadbalancer.server.port=5055
+  
+  #JELLYFIN STACK
   jellyfin:
     image: lscr.io/linuxserver/jellyfin
     container_name: jellyfin
@@ -282,86 +331,31 @@ services:
     devices:
       - /dev/dri/renderD128:/dev/dri/renderD128
       - /dev/dri/card0:/dev/dri/card0
-  plex:
-    image: lscr.io/linuxserver/plex:latest
-    container_name: plex
+    profiles:
+      - jellyfin
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
     environment:
-      - PUID=${USER_ID}
-      - PGID=${GROUP_ID}
+      - LOG_LEVEL=debug
       - TZ=${TIMEZONE}
-      - VERSION=docker
-      - PLEX_CLAIM=claim-qAY31PNjJn2msQ9ShPXb
     volumes:
-      - ${CONFIG_ROOT:-.}/plex:/config
-      - ${DATA_ROOT}:/media
+      - ${CONFIG_ROOT:-.}/jellyseerr:/app/config
     restart: always
     healthcheck:
-      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:32400/web" ]
+      test: ["CMD", "wget", "http://127.0.0.1:5055/api/v1/status", "-qO", "/dev/null"]
       interval: 30s
       retries: 10
-    ports:
-      - 32400:32400
-      - "1900:1900/udp"
     labels:
       - traefik.enable=true
-      - traefik.http.routers.plex.rule=(Host(`${PLEX_HOSTNAME}`))
-      - traefik.http.routers.plex.tls=true
-      - traefik.http.routers.plex.tls.certresolver=myresolver
-      - traefik.http.services.plex.loadbalancer.server.port=32400
-  # tautulli:
-  #   image: lscr.io/linuxserver/tautulli:latest
-  #   container_name: tautulli
-  #   environment:
-  #     - PUID=${USER_ID}
-  #     - PGID=${GROUP_ID}
-  #     - TZ=${TIMEZONE}
-  #   volumes:
-  #     - ${CONFIG_ROOT:-.}/tautulli/config:/config
-  #   ports:
-  #     - 8181:8181
-  #   labels:
-  #     - traefik.enable=true
-  #     - traefik.http.routers.tautulli.rule=(Host(`${TAUTULLI_HOSTNAME}`))
-  #     - traefik.http.routers.tautulli.tls=true
-  #     - traefik.http.routers.tautulli.tls.certresolver=myresolver
-  #     - traefik.http.services.tautulli.loadbalancer.server.port=8181
-  #   restart: always
-  homarr:
-    container_name: homarr
-    image: ghcr.io/ajnart/homarr:latest
-    restart: always
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock # Optional, only if you want docker integration
-      - ./homarr/configs:/app/data/configs
-      - ./homarr/icons:/app/public/icons
-      - ./homarr/data:/data
-    ports:
-      - '7575:7575'
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.homarr.rule=(Host(`${HOSTNAME}`))
-      - traefik.http.routers.homarr.tls=true
-      - traefik.http.routers.homarr.tls.certresolver=myresolver
-      - traefik.http.services.homarr.loadbalancer.server.port=7575
-  readarr:
-    image: lscr.io/linuxserver/readarr:develop
-    container_name: readarr
-    environment:
-      - PUID=${USER_ID}
-      - PGID=${GROUP_ID}
-      - TZ=${TIMEZONE}
-    volumes:
-      - ${CONFIG_ROOT:-.}/readarr:/config
-      - ${DATA_ROOT}:/data
-    ports:
-      - 8787:8787
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.readarr.rule=(Host(`${READARR_HOSTNAME}`))
-      - traefik.http.routers.readarr.tls=true
-      - traefik.http.routers.readarr.tls.certresolver=myresolver
-      - traefik.http.services.readarr.loadbalancer.server.port=8787
-    restart: always
+      - traefik.http.routers.jellyseerr.rule=(Host(`${JELLYSEERR_HOSTNAME}`))
+      - traefik.http.routers.jellyseerr.tls=true
+      - traefik.http.routers.jellyseerr.tls.certresolver=myresolver
+      - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
+    profiles:
+      - jellyfin
+  
+  #BOOKS STACK
   calibre:
     image: lscr.io/linuxserver/calibre:latest
     container_name: calibre
@@ -392,6 +386,8 @@ services:
       - traefik.http.routers.calibreui.service=calibre_ui
       - traefik.http.services.calibre_ui.loadbalancer.server.port=8081
     restart: always
+  
+  #FILE TRANSFER STACK
   snapdrop:
     image: lscr.io/linuxserver/snapdrop:latest
     restart: always
@@ -408,6 +404,8 @@ services:
       - traefik.http.routers.snapdrop.tls=true
       - traefik.http.routers.snapdrop.tls.certresolver=myresolver
       - traefik.http.services.snapdrop.loadbalancer.server.port=80
+  
+  #UTILS STACK
   dash:
     image: mauricenino/dashdot:latest
     restart: always
@@ -455,33 +453,36 @@ services:
       - traefik.http.routers.portainer.rule=(Host(`${PORTAINER_HOSTNAME}`))
       - traefik.http.routers.portainer.tls=true
       - traefik.http.routers.portainer.tls.certresolver=myresolver
+      - traefik.http.routers.portainer.service=portainer
       - traefik.http.services.portainer.loadbalancer.server.port=9000
 
       - traefik.http.routers.portaineredge.rule=(Host(`${PORTAINER_EDGE_HOSTNAME}`))
       - traefik.http.routers.portaineredge.tls=true
       - traefik.http.routers.portaineredge.tls.certresolver=myresolver
+      - traefik.http.routers.portaineredge.service=portaineredge
       - traefik.http.services.portaineredge.loadbalancer.server.port=8000
-  # pihole:
-  #   container_name: pihole
-  #   image: pihole/pihole:latest
-  #   ports:
-  #     - "53:53/tcp"
-  #     - "53:53/udp"
-  #     - "67:67/udp"
-  #     - "81:80/tcp"
-  #   environment:
-  #     TZ: ${TIMEZONE}
-  #     WEBPASSWORD: ${PIE_HOLE_PASSWORD}
-  #   volumes:
-  #     - '${CONFIG_ROOT:-.}/pihole/etc/pihole:/etc/pihole'
-  #     - '${CONFIG_ROOT:-.}/pihole/etc/dnsmasq.d:/etc/dnsmasq.d'
-  #   cap_add:
-  #     - NET_ADMIN
-  #   restart: always
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "67:67/udp"
+      - "81:80/tcp"
+    environment:
+      TZ: ${TIMEZONE}
+      WEBPASSWORD: ${PIE_HOLE_PASSWORD}
+    volumes:
+      - '${CONFIG_ROOT:-.}/pihole/etc/pihole:/etc/pihole'
+      - '${CONFIG_ROOT:-.}/pihole/etc/dnsmasq.d:/etc/dnsmasq.d'
+    cap_add:
+      - NET_ADMIN
+    restart: always
+    profiles:
+      - pihole
+
+
 
 networks:
-  internal:
-  traefik:
-    external: true
   default:
     name: docker-compose-server
