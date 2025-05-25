@@ -260,52 +260,52 @@ services:
       - traefik.http.services.lidarr.loadbalancer.server.port=8686
     profiles:
       - lidarr
-  flaresolverr:
-    image: 21hsmw/flaresolverr:nodriver
-    container_name: flaresolverr
-    restart: always
-    environment:
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - LOG_HTML=${LOG_HTML:-false}
-      - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
-      - TZ=${TIMEZONE}
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.flaresolverr.rule=(Host(`${FLARESOLVERR_HOSTNAME}`))
-      - traefik.http.routers.flaresolverr.tls=true
-      - traefik.http.services.flaresolverr.loadbalancer.server.port=8191
-    profiles:
-      - flaresolverr
-  cleanuperr:
-    image: ghcr.io/flmorg/cleanuperr:latest
-    container_name: cleanuperr
-    restart: always
-    volumes:
-      - ${CONFIG_ROOT:-.}/cleanuperr/logs:/var/logs
-      - ${CONFIG_ROOT:-.}/cleanuperr/ignored.txt:/usr/ignored.txt
-      - ${CONFIG_ROOT:-.}/cleanuperr/blacklist.json:/usr/blacklist.json
-    environment:
-      - TZ=${TIMEZONE}
-      - QUEUECLEANER__ENABLED=true
-      - QUEUECLEANER__IMPORT_FAILED_MAX_STRIKES=3
-      - QUEUECLEANER__STALLED_MAX_STRIKES=3
-      - QUEUECLEANER__DOWNLOADING_METADATA_MAX_STRIKES=3
-      - QUEUECLEANER__STALLED_RESET_STRIKES_ON_PROGRESS=true
-      - TRIGGERS__QUEUECLEANER=0 0 0/1 * * ?
-      - CONTENTBLOCKER__ENABLED=true
-      - CONTENTBLOCKER__IGNORED_DOWNLOADS_PATH=/usr/ignored.txt
-      - TRIGGERS__CONTENTBLOCKER=0 0 0/1 * * ?
-      - DOWNLOAD_CLIENT=qBittorrent
-      - QBITTORRENT__URL=http://vpn:8080
-      - QBITTORRENT__PASSWORD=${QBITTORRENT_PASSWORD}
-      - SONARR__ENABLED=true
-      - SONARR__BLOCK__PATH=/usr/blacklist.json
-      - SONARR__INSTANCES__0__URL=http://sonarr:8989
-      - SONARR__INSTANCES__0__APIKEY=${SONARR_API_KEY}
-      - RADARR__ENABLED=true
-      - RADARR__BLOCK__PATH=/usr/blacklist.json
-      - RADARR__INSTANCES__0__URL=http://radarr:7878
-      - RADARR__INSTANCES__0__APIKEY=${RADARR_API_KEY}
+    flaresolverr:
+      image: 21hsmw/flaresolverr:nodriver
+      container_name: flaresolverr
+      restart: always
+      environment:
+        - LOG_LEVEL=${LOG_LEVEL:-info}
+        - LOG_HTML=${LOG_HTML:-false}
+        - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+        - TZ=${TIMEZONE}
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.flaresolverr.rule=(Host(`${FLARESOLVERR_HOSTNAME}`))
+        - traefik.http.routers.flaresolverr.tls=true
+        - traefik.http.services.flaresolverr.loadbalancer.server.port=8191
+      profiles:
+        - flaresolverr
+    cleanuperr:
+      image: ghcr.io/flmorg/cleanuperr:latest
+      container_name: cleanuperr
+      restart: always
+      volumes:
+        - ${CONFIG_ROOT:-.}/cleanuperr/logs:/var/logs
+        - ${CONFIG_ROOT:-.}/cleanuperr/ignored.txt:/usr/ignored.txt
+        - ${CONFIG_ROOT:-.}/cleanuperr/blacklist.json:/usr/blacklist.json
+      environment:
+        - TZ=${TIMEZONE}
+        - QUEUECLEANER__ENABLED=true
+        - QUEUECLEANER__IMPORT_FAILED_MAX_STRIKES=3
+        - QUEUECLEANER__STALLED_MAX_STRIKES=3
+        - QUEUECLEANER__DOWNLOADING_METADATA_MAX_STRIKES=3
+        - QUEUECLEANER__STALLED_RESET_STRIKES_ON_PROGRESS=true
+        - TRIGGERS__QUEUECLEANER=0 0 0/1 * * ?
+        - CONTENTBLOCKER__ENABLED=true
+        - CONTENTBLOCKER__IGNORED_DOWNLOADS_PATH=/usr/ignored.txt
+        - TRIGGERS__CONTENTBLOCKER=0 0 0/1 * * ?
+        - DOWNLOAD_CLIENT=qBittorrent
+        - QBITTORRENT__URL=http://vpn:8080
+        - QBITTORRENT__PASSWORD=${QBITTORRENT_PASSWORD}
+        - SONARR__ENABLED=true
+        - SONARR__BLOCK__PATH=/usr/blacklist.json
+        - SONARR__INSTANCES__0__URL=http://sonarr:8989
+        - SONARR__INSTANCES__0__APIKEY=${SONARR_API_KEY}
+        - RADARR__ENABLED=true
+        - RADARR__BLOCK__PATH=/usr/blacklist.json
+        - RADARR__INSTANCES__0__URL=http://radarr:7878
+        - RADARR__INSTANCES__0__APIKEY=${RADARR_API_KEY}
   decluttarr:
     image: ghcr.io/manimatter/decluttarr:latest
     container_name: decluttarr

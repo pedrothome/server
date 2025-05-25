@@ -22,3 +22,13 @@ docker-compose.override.yml
 /calibre-web
 /cleanuperr/*
 !/cleanuperr/blacklist.json
+/plex
+/readarr
+/homarr
+/overseerr
+/snapdrop
+/tautulli
+/pihole
+/calibre
+/portainer
+/config
