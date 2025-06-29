@@ -23,3 +23,14 @@ docker-compose.override.yml
 /cleanuperr/*
 !/cleanuperr/blacklist.json
 !/cleanuperr/logs/.gitkeep
+/plex
+/readarr
+/homarr
+/overseerr
+/snapdrop
+/tautulli
+/pihole
+/calibre
+/portainer
+/config
+/pairdrop

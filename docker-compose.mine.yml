@@ -1,0 +1,645 @@
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: always
+    environment:
+      - CLOUDFLARE_EMAIL=${CLOUDFLARE_EMAIL}
+      - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
+      - CLOUDFLARE_ZONE_API_TOKEN=${CLOUDFLARE_ZONE_API_TOKEN}
+      - LETS_ENCRYPT_EMAIL=${LETS_ENCRYPT_EMAIL}
+    command:
+      - --ping=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web-secure.address=:443
+      - --entrypoints.web.http.redirections.entryPoint.to=web-secure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --experimental.plugins.rewrite-body.modulename=github.com/packruler/rewrite-body
+      - --experimental.plugins.rewrite-body.version=v1.2.0
+      - --experimental.plugins.rewriteHeaders.modulename=github.com/XciD/traefik-plugin-rewrite-headers
+      - --experimental.plugins.rewriteHeaders.version=v0.0.3
+      - --certificatesresolvers.myresolver.acme.dnschallenge=${DNS_CHALLENGE:-true}
+      - --certificatesresolvers.myresolver.acme.dnschallenge.provider=${DNS_CHALLENGE_PROVIDER:-cloudflare}
+      - --certificatesresolvers.myresolver.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      - --certificatesresolvers.myresolver.acme.caserver=${LETS_ENCRYPT_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - --certificatesresolvers.myresolver.acme.email=${LETS_ENCRYPT_EMAIL}
+      - --certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${CONFIG_ROOT:-.}/letsencrypt:/letsencrypt
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    extra_hosts:
+      - host.docker.internal:172.17.0.1
+    healthcheck:
+      test: [ "CMD", "traefik", "healthcheck", "--ping" ]
+      interval: 30s
+      retries: 10
+  
+  #DOWNLOAD STACK
+  homarr:
+    container_name: homarr
+    image: ghcr.io/ajnart/homarr:latest
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Optional, only if you want docker integration
+      - ./homarr/configs:/app/data/configs
+      - ./homarr/icons:/app/public/icons
+      - ./homarr/data:/data
+    ports:
+      - '7575:7575'
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.homarr.rule=(Host(`${HOSTNAME}`))
+      - traefik.http.routers.homarr.tls=true
+      - traefik.http.routers.homarr.tls.certresolver=myresolver
+      - traefik.http.services.homarr.loadbalancer.server.port=7575
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+  sonarr:
+    image: lscr.io/linuxserver/sonarr
+    container_name: sonarr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/sonarr:/config
+      - ${DATA_ROOT}:/data
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:8989/ping" ]
+      interval: 30s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sonarr.rule=(Host(`${SONARR_HOSTNAME}`))
+      - traefik.http.routers.sonarr.tls=true
+      - traefik.http.routers.sonarr.tls.certresolver=myresolver
+      - traefik.http.services.sonarr.loadbalancer.server.port=8989
+  radarr:
+    image: lscr.io/linuxserver/radarr
+    container_name: radarr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/radarr:/config
+      - ${DATA_ROOT}:/data
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:7878/ping" ]
+      interval: 30s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.radarr.rule=(Host(`${RADARR_HOSTNAME}`))
+      - traefik.http.routers.radarr.tls=true
+      - traefik.http.routers.radarr.tls.certresolver=myresolver
+      - traefik.http.services.radarr.loadbalancer.server.port=7878
+  bazarr:
+    image: lscr.io/linuxserver/bazarr
+    container_name: bazarr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/bazarr/config:/config
+      - ${DATA_ROOT}:/data
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:6767/ping" ]
+      interval: 5s
+      retries: 10
+    ports:
+      - 6767:6767
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.bazarr.rule=(Host(`${BAZARR_HOSTNAME}`))
+      - traefik.http.routers.bazarr.tls=true
+      - traefik.http.routers.bazarr.tls.certresolver=myresolver
+      - traefik.http.services.bazarr.loadbalancer.server.port=6767
+  readarr:
+    image: lscr.io/linuxserver/readarr:develop
+    container_name: readarr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/readarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - 8787:8787
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.readarr.rule=(Host(`${READARR_HOSTNAME}`))
+      - traefik.http.routers.readarr.tls=true
+      - traefik.http.routers.readarr.tls.certresolver=myresolver
+      - traefik.http.services.readarr.loadbalancer.server.port=8787
+    restart: always
+    profiles:
+      - readarr
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/prowlarr:/config
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:9696/ping" ]
+      interval: 30s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prowlarr.rule=(Host(`${PROWLARR_HOSTNAME}`))
+      - traefik.http.routers.prowlarr.tls=true
+      - traefik.http.routers.prowlarr.tls.certresolver=myresolver
+      - traefik.http.services.prowlarr.loadbalancer.server.port=9696
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:libtorrentv1
+    container_name: qbittorrent
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - WEBUI_PORT=8080
+      - DOCKER_MODS=ghcr.io/gabe565/linuxserver-mod-vuetorrent
+    volumes:
+      - ${CONFIG_ROOT:-.}/qbittorrent:/config
+      - ${DOWNLOAD_ROOT}:/data/torrents
+    restart: always
+    healthcheck:
+      # Container may fail if the PIA's token expired, so mark as unhealthy when there is no internet connection
+      # see: https://github.com/qdm12/gluetun/issues/641#issuecomment-933856220
+      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:8080", "https://google.com" ]
+      interval: 30s
+      retries: 10
+    network_mode: "service:vpn"
+    depends_on:
+      vpn:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.qbittorrent.rule=(Host(`${QBITTORRENT_HOSTNAME}`))
+      - traefik.http.routers.qbittorrent.tls=true
+      - traefik.http.routers.qbittorrent.tls.certresolver=myresolver
+      - traefik.http.services.qbittorrent.loadbalancer.server.port=8080
+      - traefik.http.routers.qbittorrent.middlewares=qbittorrent-strip-slash,qbittorrent-stripprefix
+      # https://github.com/qbittorrent/qBittorrent/issues/5693#issuecomment-552146296
+      - traefik.http.middlewares.qbittorrent-stripprefix.stripPrefix.prefixes=/qbittorrent
+      # https://community.traefik.io/t/middleware-to-add-the-if-needed/1895/19
+      - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.regex=(^.*\/qbittorrent$$)
+      - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.replacement=$$1/
+      - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.permanent=false
+      #- com.centurylinklabs.watchtower.depends-on=/vpn
+  vpn:
+    image: ghcr.io/bubuntux/nordlynx:2023-06-01
+    cap_add:
+      - NET_ADMIN               # Required
+      - NET_RAW                 # Required
+      - SYS_MODULE
+    environment:                # Review https://github.com/bubuntux/nordvpn#environment-variables
+      - PRIVATE_KEY=${NORD_PRIVATE_KEY}     # Required
+      - QUERY=filters\[servers_groups\]\[identifier\]=legacy_p2p
+      - NET_LOCAL=192.168.1.0/24  # So it can be accessed within the local network
+      - TZ=${TIMEZONE}
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1   # maybe
+      - net.ipv4.conf.all.rp_filter=2        # maybe; set reverse path filter to loose mode
+      - net.ipv6.conf.all.disable_ipv6=1     # disable ipv6; recommended if using ipv4 only
+    healthcheck:
+      test: ping -c 1 www.google.com || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: always
+  unpackerr:
+    image: golift/unpackerr
+    container_name: unpackerr
+    volumes:
+      - ${DOWNLOAD_ROOT}:/data/torrents
+    restart: always
+    user: ${USER_ID}:${GROUP_ID}
+    environment:
+      - TZ=${TIMEZONE}
+      - UN_SONARR_0_URL=http://sonarr:8989
+      - UN_SONARR_0_API_KEY=${SONARR_API_KEY}
+      - UN_RADARR_0_URL=http://radarr:7878
+      - UN_RADARR_0_API_KEY=${RADARR_API_KEY}
+      - UN_READARR_0_URL=http://readarr:8787
+      - UN_READARR_0_API_KEY=${READARR_API_KEY}
+    security_opt:
+      - no-new-privileges:true
+  lidarr:
+    image: lscr.io/linuxserver/lidarr
+    container_name: lidarr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/lidarr:/config
+      - ${DATA_ROOT}:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8686/ping"]
+      interval: 1m
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.lidarr.rule=(Host(`${LIDARR_HOSTNAME}`))
+      - traefik.http.routers.lidarr.tls=true
+      - traefik.http.routers.lidarr.tls.certresolver=myresolver
+      - traefik.http.services.lidarr.loadbalancer.server.port=8686
+    profiles:
+      - lidarr
+  flaresolverr:
+    image: 21hsmw/flaresolverr:nodriver
+    container_name: flaresolverr
+    restart: always
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_HTML=${LOG_HTML:-false}
+      - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+      - TZ=${TIMEZONE}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.flaresolverr.rule=(Host(`${FLARESOLVERR_HOSTNAME}`))
+      - traefik.http.routers.flaresolverr.tls=true
+      - traefik.http.services.flaresolverr.loadbalancer.server.port=8191
+    profiles:
+      - flaresolverr
+  cleanuperr:
+    image: ghcr.io/cleanuparr/cleanuparr:latest
+    container_name: cleanuperr
+    restart: always
+    volumes:
+      - ${CONFIG_ROOT:-.}/cleanuperr/logs:/var/logs
+      - ${CONFIG_ROOT:-.}/cleanuperr/ignored.txt:/usr/ignored.txt
+      - ${CONFIG_ROOT:-.}/cleanuperr/blacklist.json:/usr/blacklist.json
+    environment:
+      - TZ=${TIMEZONE}
+      - QUEUECLEANER__ENABLED=true
+      - QUEUECLEANER__IMPORT_FAILED_MAX_STRIKES=3
+      - QUEUECLEANER__STALLED_MAX_STRIKES=3
+      - QUEUECLEANER__DOWNLOADING_METADATA_MAX_STRIKES=3
+      - QUEUECLEANER__STALLED_RESET_STRIKES_ON_PROGRESS=true
+      - TRIGGERS__QUEUECLEANER=0 0 0/1 * * ?
+      - CONTENTBLOCKER__ENABLED=true
+      - CONTENTBLOCKER__IGNORED_DOWNLOADS_PATH=/usr/ignored.txt
+      - TRIGGERS__CONTENTBLOCKER=0 0 0/1 * * ?
+      - DOWNLOAD_CLIENT=qBittorrent
+      - QBITTORRENT__URL=http://vpn:8080
+      - QBITTORRENT__PASSWORD=${QBITTORRENT_PASSWORD}
+      - SONARR__ENABLED=true
+      - SONARR__BLOCK__PATH=/usr/blacklist.json
+      - SONARR__INSTANCES__0__URL=http://sonarr:8989
+      - SONARR__INSTANCES__0__APIKEY=${SONARR_API_KEY}
+      - RADARR__ENABLED=true
+      - RADARR__BLOCK__PATH=/usr/blacklist.json
+      - RADARR__INSTANCES__0__URL=http://radarr:7878
+      - RADARR__INSTANCES__0__APIKEY=${RADARR_API_KEY}
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+  decluttarr:
+    image: ghcr.io/manimatter/decluttarr:latest
+    container_name: decluttarr
+    restart: always
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - RADARR_URL=http://radarr:7878
+      - RADARR_KEY=${RADARR_API_KEY}
+      - SONARR_URL=http://sonarr:8989
+      - SONARR_KEY=${SONARR_API_KEY}
+      - LIDARR_URL=http://lidarr:8686
+      - LIDARR_KEY=${LIDARR_API_KEY}
+      - QBITTORRENT_URL=http://qbittorrent:8080
+      - QBITTORRENT_USERNAME=${QBITTORRENT_USERNAME}
+      - QBITTORRENT_PASSWORD=${QBITTORRENT_PASSWORD}
+      - LOG_LEVEL=${DECLUTTARR_LOG_LEVEL:-INFO}
+      - TEST_RUN=${DECLUTTARR_TEST_RUN:-False}
+      - REMOVE_TIMER=${DECLUTTARR_REMOVE_TIMER:-10}
+      - REMOVE_FAILED=${DECLUTTARR_REMOVE_FAILED:-True}
+      - REMOVE_FAILED_IMPORTS=${DECLUTTARR_REMOVE_FAILED_IMPORTS:-True}
+      - REMOVE_METADATA_MISSING=${DECLUTTARR_REMOVE_METADATA_MISSING:-True}
+      - REMOVE_MISSING_FILES=${DECLUTTARR_REMOVE_MISSING_FILES:-True}
+      - REMOVE_ORPHANS=${DECLUTTARR_REMOVE_ORPHANS:-True}
+      - REMOVE_SLOW=${DECLUTTARR_REMOVE_SLOW:-True}
+      - REMOVE_STALLED=${DECLUTTARR_REMOVE_STALLED:-True}
+      - REMOVE_UNMONITORED=${DECLUTTARR_REMOVE_UNMONITORED:-True}
+      - RUN_PERIODIC_RESCANS=${DECLUTTARR_RUN_PERIODIC_RESCANS:-}
+      - PERMITTED_ATTEMPTS=${DECLUTTARR_PERMITTED_ATTEMPTS:-3}
+      - NO_STALLED_REMOVAL_QBIT_TAG=${DECLUTTARR_REMOVAL_QBIT_TAG:-"stalled"}
+      - MIN_DOWNLOAD_SPEED=${DECLUTTARR_MIN_DOWNLOAD_SPEED:-100}
+      - FAILED_IMPORT_MESSAGE_PATTERNS=${DECLUTTARR_FAILED_IMPORT_MESSAGE_PATTERNS:-}
+      - IGNORED_DOWNLOAD_CLIENTS=${DECLUTTARR_IGNORED_DOWNLOAD_CLIENTS:-}
+    profiles:
+      - decluttarr
+  
+  
+  #PLEX STACK
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - VERSION=docker
+      - PLEX_CLAIM=claim-qAY31PNjJn2msQ9ShPXb
+    volumes:
+      - ${CONFIG_ROOT:-.}/plex:/config
+      - ${DATA_ROOT}:/media
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:32400/web" ]
+      interval: 30s
+      retries: 10
+    ports:
+      - 32400:32400
+      - "1900:1900/udp"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.plex.rule=(Host(`${PLEX_HOSTNAME}`))
+      - traefik.http.routers.plex.tls=true
+      - traefik.http.routers.plex.tls.certresolver=myresolver
+      - traefik.http.services.plex.loadbalancer.server.port=32400
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/tautulli/config:/config
+    ports:
+      - 8181:8181
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.tautulli.rule=(Host(`${TAUTULLI_HOSTNAME}`))
+      - traefik.http.routers.tautulli.tls=true
+      - traefik.http.routers.tautulli.tls.certresolver=myresolver
+      - traefik.http.services.tautulli.loadbalancer.server.port=8181
+    restart: always
+    profiles:
+      - plex
+  overseerr:
+    image: lscr.io/linuxserver/overseerr:latest
+    container_name: overseerr
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/overseerr/config:/config
+    restart: always
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.overseerr.rule=(Host(`${OVERSEERR_HOSTNAME}`))
+      - traefik.http.routers.overseerr.tls=true
+      - traefik.http.routers.overseerr.tls.certresolver=myresolver
+      - traefik.http.services.overseerr.loadbalancer.server.port=5055
+  
+  #JELLYFIN STACK
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin
+    container_name: jellyfin
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - JELLYFIN_PublishedServerUrl=${HOSTNAME}/jellyfin
+    volumes:
+      - ${CONFIG_ROOT:-.}/jellyfin:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - "7359:7359/udp"
+      - 8096:8096
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://127.0.0.1:8096/health" ]
+      interval: 30s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyfin.rule=(Host(`${JELLYFIN_HOSTNAME}`))
+      - traefik.http.routers.jellyfin.tls=true
+      - traefik.http.routers.jellyfin.tls.certresolver=myresolver
+      - traefik.http.services.jellyfin.loadbalancer.server.port=8096
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri/card0:/dev/dri/card0
+    profiles:
+      - jellyfin
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/jellyseerr:/app/config
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "http://127.0.0.1:5055/api/v1/status", "-qO", "/dev/null"]
+      interval: 30s
+      retries: 10
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.jellyseerr.rule=(Host(`${JELLYSEERR_HOSTNAME}`))
+      - traefik.http.routers.jellyseerr.tls=true
+      - traefik.http.routers.jellyseerr.tls.certresolver=myresolver
+      - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
+    profiles:
+      - jellyfin
+  
+  #BOOKS STACK
+  calibre:
+    image: lscr.io/linuxserver/calibre:latest
+    container_name: calibre
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/calibre:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - 8082:8080
+      - 8182:8181
+      - 8081:8081
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.calibre.rule=(Host(`${CALIBRE_HOSTNAME}`))
+      - traefik.http.routers.calibre.tls=true
+      - traefik.http.routers.calibre.tls.certresolver=myresolver
+      - traefik.http.routers.calibre.service=calibre_web
+      - traefik.http.services.calibre_web.loadbalancer.server.port=8080
+      
+      - traefik.http.routers.calibreui.rule=(Host(`${CALIBRE_UI_HOSTNAME}`))
+      - traefik.http.routers.calibreui.tls=true
+      - traefik.http.routers.calibreui.tls.certresolver=myresolver
+      - traefik.http.routers.calibreui.service=calibre_ui
+      - traefik.http.services.calibre_ui.loadbalancer.server.port=8081
+    restart: always
+  calibre-web:
+    image: lscr.io/linuxserver/calibre-web:latest
+    container_name: calibre-web
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - DOCKER_MODS=linuxserver/mods:universal-calibre
+      - OAUTHLIB_RELAX_TOKEN_SCOPE=1
+    volumes:
+      - ${CONFIG_ROOT:-.}/calibre-web:/config
+      - ${DATA_ROOT}/books:/books
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.calibre-headers.headers.customRequestHeaders.X-Scheme=https
+      - traefik.http.routers.calibre.middlewares=calibre-headers,calibre-stripprefixregex
+      - traefik.http.routers.calibre.rule=(Host(`${CALIBRE_WEB_HOSTNAME}`))
+      - traefik.http.routers.calibre.tls=true
+      - traefik.http.routers.calibre.tls.certresolver=myresolver
+      - traefik.http.services.calibre.loadbalancer.server.port=8083
+    profiles:
+      - calibre-web
+  
+  #FILE TRANSFER STACK
+  pairdrop:
+    image: lscr.io/linuxserver/pairdrop:latest
+    restart: always
+    container_name: pairdrop
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${CONFIG_ROOT:-.}/pairdrop/config:/config
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pairdrop.rule=(Host(`${PAIRDROP_HOSTNAME}`))
+      - traefik.http.routers.pairdrop.tls=true
+      - traefik.http.routers.pairdrop.tls.certresolver=myresolver
+      - traefik.http.services.pairdrop.loadbalancer.server.port=3000
+  
+  #UTILS STACK
+  dash:
+    image: mauricenino/dashdot:latest
+    restart: always
+    container_name: dash
+    privileged: true
+    ports:
+      - '3001:3001'
+    volumes:
+      - /:/mnt/host:ro
+    environment:
+      - DASHDOT_ENABLE_CPU_TEMPS=true
+      - DASHDOT_WIDGET_LIST=os,cpu,storage,ram,network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.dash.rule=(Host(`${DASH_HOSTNAME}`))
+      - traefik.http.routers.dash.tls=true
+      - traefik.http.routers.dash.tls.certresolver=myresolver
+      - traefik.http.services.dash.loadbalancer.server.port=3001
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: always
+    environment:
+      - WATCHTOWER_CLEANUP=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: autoheal
+    restart: always
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  portainer:
+    image:  portainer/portainer-ce:latest
+    container_name: portainer
+    command: -H unix:///var/run/docker.sock
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CONFIG_ROOT:-.}/portainer:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.portainer.rule=(Host(`${PORTAINER_HOSTNAME}`))
+      - traefik.http.routers.portainer.tls=true
+      - traefik.http.routers.portainer.tls.certresolver=myresolver
+      - traefik.http.routers.portainer.service=portainer
+      - traefik.http.services.portainer.loadbalancer.server.port=9000
+
+      - traefik.http.routers.portaineredge.rule=(Host(`${PORTAINER_EDGE_HOSTNAME}`))
+      - traefik.http.routers.portaineredge.tls=true
+      - traefik.http.routers.portaineredge.tls.certresolver=myresolver
+      - traefik.http.routers.portaineredge.service=portaineredge
+      - traefik.http.services.portaineredge.loadbalancer.server.port=8000
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "67:67/udp"
+      - "81:80/tcp"
+    environment:
+      - TZ=${TIMEZONE}
+      - WEBPASSWORD=${PIE_HOLE_PASSWORD}
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+    volumes:
+      - '${CONFIG_ROOT:-.}/pihole/etc/pihole:/etc/pihole'
+      - '${CONFIG_ROOT:-.}/pihole/etc/dnsmasq.d:/etc/dnsmasq.d'
+    cap_add:
+      - NET_ADMIN
+    restart: always
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pihole.rule=(Host(`${PIHOLE_HOSTNAME}`))
+      - traefik.http.routers.pihole.tls=true
+      - traefik.http.routers.pihole.tls.certresolver=myresolver
+      - traefik.http.routers.pihole.service=pihole
+      - traefik.http.services.pihole.loadbalancer.server.port=80
+  nebula-sync:
+    image: ghcr.io/lovelaze/nebula-sync:latest
+    container_name: nebula-sync
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - PRIMARY=http://192.168.0.2|${PIE_HOLE_PASSWORD}
+      - REPLICAS=http://192.168.0.3:81|${PIE_HOLE_PASSWORD}
+      - FULL_SYNC=true
+      - RUN_GRAVITY=true
+      - CRON=0 * * * *
+    depends_on:
+      pihole:
+        condition: service_healthy
+
+networks:
+  default:
+    name: docker-compose-server
