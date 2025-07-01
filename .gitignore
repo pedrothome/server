@@ -35,3 +35,6 @@ docker-compose.override.yml
 /config
 /pairdrop
 /5etools
+/cleanuparr/*
+!/cleanuparr/blacklist.json
+!/cleanuparr/logs/.gitkeep
