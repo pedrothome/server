@@ -27,6 +27,10 @@ services:
       - --certificatesresolvers.myresolver.acme.caserver=${LETS_ENCRYPT_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
       - --certificatesresolvers.myresolver.acme.email=${LETS_ENCRYPT_EMAIL}
       - --certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json
+      # Tunnel entrypoint for Cloudflare Tunnel (external access with Google OAuth)
+      - --entrypoints.tunnel.address=:8888
+      - --entrypoints.tunnel.asDefault=false
+      - --entrypoints.tunnel.forwardedHeaders.insecure=true
     ports:
       - "80:80"
       - "443:443"
@@ -58,6 +62,11 @@ services:
       - traefik.http.routers.homarr.tls=true
       - traefik.http.routers.homarr.tls.certresolver=myresolver
       - traefik.http.services.homarr.loadbalancer.server.port=7575
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.homarr-external.rule=(Host(`${HOSTNAME}`))
+      - traefik.http.routers.homarr-external.entrypoints=tunnel
+      - traefik.http.routers.homarr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.homarr-external.service=homarr
     environment:
       - PUID=${USER_ID}
       - PGID=${GROUP_ID}
@@ -83,6 +92,11 @@ services:
       - traefik.http.routers.sonarr.tls=true
       - traefik.http.routers.sonarr.tls.certresolver=myresolver
       - traefik.http.services.sonarr.loadbalancer.server.port=8989
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.sonarr-external.rule=(Host(`${SONARR_HOSTNAME}`))
+      - traefik.http.routers.sonarr-external.entrypoints=tunnel
+      - traefik.http.routers.sonarr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.sonarr-external.service=sonarr
   radarr:
     image: lscr.io/linuxserver/radarr
     container_name: radarr
@@ -104,6 +118,11 @@ services:
       - traefik.http.routers.radarr.tls=true
       - traefik.http.routers.radarr.tls.certresolver=myresolver
       - traefik.http.services.radarr.loadbalancer.server.port=7878
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.radarr-external.rule=(Host(`${RADARR_HOSTNAME}`))
+      - traefik.http.routers.radarr-external.entrypoints=tunnel
+      - traefik.http.routers.radarr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.radarr-external.service=radarr
   bazarr:
     image: lscr.io/linuxserver/bazarr
     container_name: bazarr
@@ -127,6 +146,11 @@ services:
       - traefik.http.routers.bazarr.tls=true
       - traefik.http.routers.bazarr.tls.certresolver=myresolver
       - traefik.http.services.bazarr.loadbalancer.server.port=6767
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.bazarr-external.rule=(Host(`${BAZARR_HOSTNAME}`))
+      - traefik.http.routers.bazarr-external.entrypoints=tunnel
+      - traefik.http.routers.bazarr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.bazarr-external.service=bazarr
   readarr:
     image: lscr.io/linuxserver/readarr:develop
     container_name: readarr
@@ -145,6 +169,11 @@ services:
       - traefik.http.routers.readarr.tls=true
       - traefik.http.routers.readarr.tls.certresolver=myresolver
       - traefik.http.services.readarr.loadbalancer.server.port=8787
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.readarr-external.rule=(Host(`${READARR_HOSTNAME}`))
+      - traefik.http.routers.readarr-external.entrypoints=tunnel
+      - traefik.http.routers.readarr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.readarr-external.service=readarr
     restart: always
     profiles:
       - readarr
@@ -168,6 +197,11 @@ services:
       - traefik.http.routers.prowlarr.tls=true
       - traefik.http.routers.prowlarr.tls.certresolver=myresolver
       - traefik.http.services.prowlarr.loadbalancer.server.port=9696
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.prowlarr-external.rule=(Host(`${PROWLARR_HOSTNAME}`))
+      - traefik.http.routers.prowlarr-external.entrypoints=tunnel
+      - traefik.http.routers.prowlarr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.prowlarr-external.service=prowlarr
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:libtorrentv1
     container_name: qbittorrent
@@ -205,6 +239,11 @@ services:
       - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.replacement=$$1/
       - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.permanent=false
       #- com.centurylinklabs.watchtower.depends-on=/vpn
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.qbittorrent-external.rule=(Host(`${QBITTORRENT_HOSTNAME}`))
+      - traefik.http.routers.qbittorrent-external.entrypoints=tunnel
+      - traefik.http.routers.qbittorrent-external.middlewares=google-oauth@docker,qbittorrent-strip-slash,qbittorrent-stripprefix
+      - traefik.http.routers.qbittorrent-external.service=qbittorrent
   vpn:
     image: ghcr.io/bubuntux/nordlynx:2023-06-01
     cap_add:
@@ -264,6 +303,11 @@ services:
       - traefik.http.routers.lidarr.tls=true
       - traefik.http.routers.lidarr.tls.certresolver=myresolver
       - traefik.http.services.lidarr.loadbalancer.server.port=8686
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.lidarr-external.rule=(Host(`${LIDARR_HOSTNAME}`))
+      - traefik.http.routers.lidarr-external.entrypoints=tunnel
+      - traefik.http.routers.lidarr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.lidarr-external.service=lidarr
     profiles:
       - lidarr
   flaresolverr:
@@ -379,6 +423,11 @@ services:
       - traefik.http.routers.plex.tls=true
       - traefik.http.routers.plex.tls.certresolver=myresolver
       - traefik.http.services.plex.loadbalancer.server.port=32400
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.plex-external.rule=(Host(`${PLEX_HOSTNAME}`))
+      - traefik.http.routers.plex-external.entrypoints=tunnel
+      - traefik.http.routers.plex-external.middlewares=google-oauth@docker
+      - traefik.http.routers.plex-external.service=plex
   tautulli:
     image: lscr.io/linuxserver/tautulli:latest
     container_name: tautulli
@@ -396,6 +445,11 @@ services:
       - traefik.http.routers.tautulli.tls=true
       - traefik.http.routers.tautulli.tls.certresolver=myresolver
       - traefik.http.services.tautulli.loadbalancer.server.port=8181
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.tautulli-external.rule=(Host(`${TAUTULLI_HOSTNAME}`))
+      - traefik.http.routers.tautulli-external.entrypoints=tunnel
+      - traefik.http.routers.tautulli-external.middlewares=google-oauth@docker
+      - traefik.http.routers.tautulli-external.service=tautulli
     restart: always
     profiles:
       - plex
@@ -415,6 +469,11 @@ services:
       - traefik.http.routers.overseerr.tls=true
       - traefik.http.routers.overseerr.tls.certresolver=myresolver
       - traefik.http.services.overseerr.loadbalancer.server.port=5055
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.overseerr-external.rule=(Host(`${OVERSEERR_HOSTNAME}`))
+      - traefik.http.routers.overseerr-external.entrypoints=tunnel
+      - traefik.http.routers.overseerr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.overseerr-external.service=overseerr
   
   #JELLYFIN STACK
   jellyfin:
@@ -442,6 +501,11 @@ services:
       - traefik.http.routers.jellyfin.tls=true
       - traefik.http.routers.jellyfin.tls.certresolver=myresolver
       - traefik.http.services.jellyfin.loadbalancer.server.port=8096
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.jellyfin-external.rule=(Host(`${JELLYFIN_HOSTNAME}`))
+      - traefik.http.routers.jellyfin-external.entrypoints=tunnel
+      - traefik.http.routers.jellyfin-external.middlewares=google-oauth@docker
+      - traefik.http.routers.jellyfin-external.service=jellyfin
     devices:
       - /dev/dri/renderD128:/dev/dri/renderD128
       - /dev/dri/card0:/dev/dri/card0
@@ -466,6 +530,11 @@ services:
       - traefik.http.routers.jellyseerr.tls=true
       - traefik.http.routers.jellyseerr.tls.certresolver=myresolver
       - traefik.http.services.jellyseerr.loadbalancer.server.port=5055
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.jellyseerr-external.rule=(Host(`${JELLYSEERR_HOSTNAME}`))
+      - traefik.http.routers.jellyseerr-external.entrypoints=tunnel
+      - traefik.http.routers.jellyseerr-external.middlewares=google-oauth@docker
+      - traefik.http.routers.jellyseerr-external.service=jellyseerr
     profiles:
       - jellyfin
   
@@ -499,6 +568,15 @@ services:
       - traefik.http.routers.calibreui.tls.certresolver=myresolver
       - traefik.http.routers.calibreui.service=calibre_ui
       - traefik.http.services.calibre_ui.loadbalancer.server.port=8081
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.calibre-external.rule=(Host(`${CALIBRE_HOSTNAME}`))
+      - traefik.http.routers.calibre-external.entrypoints=tunnel
+      - traefik.http.routers.calibre-external.middlewares=google-oauth@docker
+      - traefik.http.routers.calibre-external.service=calibre_web
+      - traefik.http.routers.calibreui-external.rule=(Host(`${CALIBRE_UI_HOSTNAME}`))
+      - traefik.http.routers.calibreui-external.entrypoints=tunnel
+      - traefik.http.routers.calibreui-external.middlewares=google-oauth@docker
+      - traefik.http.routers.calibreui-external.service=calibre_ui
     restart: always
   calibre-web:
     image: lscr.io/linuxserver/calibre-web:latest
@@ -521,6 +599,11 @@ services:
       - traefik.http.routers.calibre.tls=true
       - traefik.http.routers.calibre.tls.certresolver=myresolver
       - traefik.http.services.calibre.loadbalancer.server.port=8083
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.calibre-web-external.rule=(Host(`${CALIBRE_WEB_HOSTNAME}`))
+      - traefik.http.routers.calibre-web-external.entrypoints=tunnel
+      - traefik.http.routers.calibre-web-external.middlewares=google-oauth@docker,calibre-headers,calibre-stripprefixregex
+      - traefik.http.routers.calibre-web-external.service=calibre
     profiles:
       - calibre-web
   
@@ -541,6 +624,11 @@ services:
       - traefik.http.routers.pairdrop.tls=true
       - traefik.http.routers.pairdrop.tls.certresolver=myresolver
       - traefik.http.services.pairdrop.loadbalancer.server.port=3000
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.pairdrop-external.rule=(Host(`${PAIRDROP_HOSTNAME}`))
+      - traefik.http.routers.pairdrop-external.entrypoints=tunnel
+      - traefik.http.routers.pairdrop-external.middlewares=google-oauth@docker
+      - traefik.http.routers.pairdrop-external.service=pairdrop
   
   #UTILS STACK
   dash:
@@ -561,6 +649,11 @@ services:
       - traefik.http.routers.dash.tls=true
       - traefik.http.routers.dash.tls.certresolver=myresolver
       - traefik.http.services.dash.loadbalancer.server.port=3001
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.dash-external.rule=(Host(`${DASH_HOSTNAME}`))
+      - traefik.http.routers.dash-external.entrypoints=tunnel
+      - traefik.http.routers.dash-external.middlewares=google-oauth@docker
+      - traefik.http.routers.dash-external.service=dash
   watchtower:
     image: containrrr/watchtower
     container_name: watchtower
@@ -598,6 +691,11 @@ services:
       - traefik.http.routers.portaineredge.tls.certresolver=myresolver
       - traefik.http.routers.portaineredge.service=portaineredge
       - traefik.http.services.portaineredge.loadbalancer.server.port=8000
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.portainer-external.rule=(Host(`${PORTAINER_HOSTNAME}`))
+      - traefik.http.routers.portainer-external.entrypoints=tunnel
+      - traefik.http.routers.portainer-external.middlewares=google-oauth@docker
+      - traefik.http.routers.portainer-external.service=portainer
   pihole:
     container_name: pihole
     image: pihole/pihole:latest
@@ -624,6 +722,11 @@ services:
       - traefik.http.routers.pihole.tls.certresolver=myresolver
       - traefik.http.routers.pihole.service=pihole
       - traefik.http.services.pihole.loadbalancer.server.port=80
+      # External access via Cloudflare Tunnel (remove to disable external access)
+      - traefik.http.routers.pihole-external.rule=(Host(`${PIHOLE_HOSTNAME}`))
+      - traefik.http.routers.pihole-external.entrypoints=tunnel
+      - traefik.http.routers.pihole-external.middlewares=google-oauth@docker
+      - traefik.http.routers.pihole-external.service=pihole
   nebula-sync:
     image: ghcr.io/lovelaze/nebula-sync:latest
     container_name: nebula-sync
@@ -639,6 +742,55 @@ services:
     depends_on:
       pihole:
         condition: service_healthy
+
+  # Cloudflare Tunnel - routes external traffic to Traefik's tunnel entrypoint
+  # Enable with COMPOSE_PROFILES=cloudflare-tunnel
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - traefik
+    profiles:
+      - cloudflare-tunnel
+
+  # Google OAuth forward authentication - protects external access with whitelisted Gmail accounts
+  traefik-forward-auth:
+    image: thomseddon/traefik-forward-auth:2
+    container_name: traefik-forward-auth
+    restart: always
+    environment:
+      - DEFAULT_PROVIDER=google
+      - PROVIDERS_GOOGLE_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - PROVIDERS_GOOGLE_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - SECRET=${OAUTH_SECRET}
+      - WHITELIST=${OAUTH_WHITELIST}
+      - AUTH_HOST=auth.${BASE_HOSTNAME}
+      - COOKIE_DOMAIN=${BASE_HOSTNAME}
+      - INSECURE_COOKIE=false
+      - URL_PATH=/_oauth
+      - LOG_LEVEL=info
+    labels:
+      - traefik.enable=true
+      # Define the google-oauth forward-auth middleware (referenced by *-external routers)
+      - traefik.http.middlewares.google-oauth.forwardauth.address=http://traefik-forward-auth:4181
+      - traefik.http.middlewares.google-oauth.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.google-oauth.forwardauth.authResponseHeaders=X-Forwarded-User
+      # OAuth callback router (tunnel entrypoint - handles external OAuth redirects)
+      - traefik.http.routers.oauth-tunnel.rule=Host(`auth.${BASE_HOSTNAME}`)
+      - traefik.http.routers.oauth-tunnel.entrypoints=tunnel
+      - traefik.http.routers.oauth-tunnel.service=traefik-forward-auth
+      # OAuth callback router (web-secure entrypoint - for internal/testing)
+      - traefik.http.routers.oauth-internal.rule=Host(`auth.${BASE_HOSTNAME}`)
+      - traefik.http.routers.oauth-internal.tls=true
+      - traefik.http.routers.oauth-internal.tls.certresolver=myresolver
+      - traefik.http.routers.oauth-internal.service=traefik-forward-auth
+      - traefik.http.services.traefik-forward-auth.loadbalancer.server.port=4181
+    profiles:
+      - cloudflare-tunnel
 
 networks:
   default:
