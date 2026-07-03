@@ -206,6 +206,7 @@ services:
       - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.permanent=false
       #- com.centurylinklabs.watchtower.depends-on=/vpn
   vpn:
+    container_name: vpn
     image: ghcr.io/bubuntux/nordlynx:2023-06-01
     cap_add:
       - NET_ADMIN               # Required
@@ -214,14 +215,14 @@ services:
     environment:                # Review https://github.com/bubuntux/nordvpn#environment-variables
       - PRIVATE_KEY=${NORD_PRIVATE_KEY}     # Required
       - QUERY=filters\[servers_groups\]\[identifier\]=legacy_p2p
-      - NET_LOCAL=192.168.1.0/24  # So it can be accessed within the local network
+      - NET_LOCAL=192.168.0.0/24  # So it can be accessed within the local network
       - TZ=${TIMEZONE}
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1   # maybe
       - net.ipv4.conf.all.rp_filter=2        # maybe; set reverse path filter to loose mode
       - net.ipv6.conf.all.disable_ipv6=1     # disable ipv6; recommended if using ipv4 only
     healthcheck:
-      test: ping -c 1 www.google.com || exit 1
+      test: ping -c 1 8.8.8.8 || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -639,6 +640,28 @@ services:
     depends_on:
       pihole:
         condition: service_healthy
+    
+  5etools:
+    image: jafner/5etools-docker:latest
+    container_name: 5etools
+    hostname: localhost
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - IMG=TRUE
+      - DL_LINK=https://github.com/5etools-mirror-3/5etools-src.git
+      - IMG_LINK=https://github.com/5etools-mirror-3/5etools-img.git
+    restart: always
+    ports:
+      - "8084:80/tcp"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.dnd.rule=(Host(`${DND_HOSTNAME}`))
+      - traefik.http.routers.dnd.tls=true
+      - traefik.http.routers.dnd.tls.certresolver=myresolver
+      - traefik.http.services.dnd.loadbalancer.server.port=80
+    volumes:
+      - '${CONFIG_ROOT:-.}/5etools:/usr/local/apache2/htdocs'
 
 networks:
   default:
