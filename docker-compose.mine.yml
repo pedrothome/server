@@ -73,7 +73,7 @@ services:
       - HOMEPAGE_VAR_WEATHER_LONG=${HOMEPAGE_VAR_WEATHER_LONG}
       - HOMEPAGE_VAR_WEATHER_TIME=${TIMEZONE}
       - HOMEPAGE_VAR_WEATHER_UNIT=${HOMEPAGE_VAR_WEATHER_UNIT}
-      - HOMEPAGE_ALLOWED_HOSTS=${HOSTNAME}
+      - HOMEPAGE_ALLOWED_HOSTS=${LOCAL_HOSTNAME}
     volumes:
       - ${CONFIG_ROOT:-.}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -83,7 +83,7 @@ services:
       [sh, -c, "cp -n /app/config/tpl/*.yaml /app/config && node server.js"]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.homepage.rule=(Host(`${HOSTNAME}`))
+      - traefik.http.routers.homepage.rule=(Host(`${LOCAL_HOSTNAME}`))
       - traefik.http.routers.homepage.tls=true
       - traefik.http.routers.homepage.tls.certresolver=myresolver
       - traefik.http.services.homepage.loadbalancer.server.port=3000
@@ -523,7 +523,7 @@ services:
       - PUID=${USER_ID}
       - PGID=${GROUP_ID}
       - TZ=${TIMEZONE}
-      - JELLYFIN_PublishedServerUrl=${HOSTNAME}/jellyfin
+      - JELLYFIN_PublishedServerUrl=${LOCAL_HOSTNAME}/jellyfin
     volumes:
       - ${CONFIG_ROOT:-.}/jellyfin:/config
       - ${DATA_ROOT}:/data
