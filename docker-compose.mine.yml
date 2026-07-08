@@ -14,6 +14,12 @@ services:
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.web-secure.address=:443
+      # Dedicated entrypoint fed exclusively by the Cloudflare tunnel (cloudflared -> traefik:8000).
+      # Not published to the host, so it is only reachable from inside the docker network.
+      # TLS for external traffic is terminated at Cloudflare's edge; cloudflared forwards plain HTTP
+      # plus X-Forwarded-* headers, which we trust here so forward-auth builds correct https redirects.
+      - --entrypoints.cloudflared.address=:8000
+      - --entrypoints.cloudflared.forwardedHeaders.insecure=true
       - --entrypoints.web.http.redirections.entryPoint.to=web-secure
       - --entrypoints.web.http.redirections.entryPoint.scheme=https
       - --entrypoints.web.http.redirections.entrypoint.permanent=true
@@ -36,7 +42,79 @@ services:
       test: [ "CMD", "traefik", "healthcheck", "--ping" ]
       interval: 30s
       retries: 10
-  
+
+  #EXTERNAL ACCESS STACK (Cloudflare tunnel + Google auth + error pages)
+  # cloudflared: outbound-only tunnel to Cloudflare. Configure the tunnel's public
+  # hostnames in the Zero Trust dashboard to forward to http://traefik:8000
+  # (see README "External access via Cloudflare Tunnel").
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - traefik
+
+  # traefik-forward-auth: gates external routers behind Google OAuth. Only e-mails in
+  # FORWARD_AUTH_WHITELIST are allowed; anyone else gets a 401 rendered by error-pages.
+  traefik-forward-auth:
+    image: thomseddon/traefik-forward-auth:2
+    container_name: traefik-forward-auth
+    restart: always
+    environment:
+      - DEFAULT_PROVIDER=google
+      - PROVIDERS_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - PROVIDERS_GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - SECRET=${FORWARD_AUTH_SECRET}
+      - AUTH_HOST=${FORWARD_AUTH_HOSTNAME}
+      - COOKIE_DOMAIN=${EXTERNAL_HOSTNAME}
+      - WHITELIST=${FORWARD_AUTH_WHITELIST}
+      - LOG_LEVEL=info
+    labels:
+      - traefik.enable=true
+      # Callback host (auth.<external>). Must be reachable through the tunnel and carries
+      # the forward-auth middleware so it can process the Google /_oauth callback.
+      - traefik.http.routers.forward-auth.rule=(Host(`${FORWARD_AUTH_HOSTNAME}`))
+      - traefik.http.routers.forward-auth.entrypoints=cloudflared
+      - traefik.http.routers.forward-auth.middlewares=forward-auth
+      - traefik.http.services.forward-auth.loadbalancer.server.port=4181
+      # Reusable middleware definition referenced by external app routers.
+      - traefik.http.middlewares.forward-auth.forwardauth.address=http://traefik-forward-auth:4181
+      - traefik.http.middlewares.forward-auth.forwardauth.authResponseHeaders=X-Forwarded-User
+
+  # error-pages: catch-all router (lowest priority) that renders styled pages for any
+  # 4xx/5xx, including 404 (unknown host/path) and 401 (authenticated but not whitelisted).
+  error-pages:
+    image: ghcr.io/tarampampam/error-pages:3
+    container_name: error-pages
+    restart: always
+    environment:
+      - TEMPLATE_NAME=${ERROR_PAGES_TEMPLATE:-ghost}
+      - SHOW_DETAILS=false
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.error-pages.loadbalancer.server.port=8080
+      # errors middleware: intercept 4xx/5xx from any router that references it
+      # (used both by the catch-all below and by the external app routers).
+      - traefik.http.middlewares.error-pages.errors.status=400-599
+      - traefik.http.middlewares.error-pages.errors.service=error-pages
+      - traefik.http.middlewares.error-pages.errors.query=/{status}.html
+      # Catch-all for unmatched hosts/paths, priority=1 so real routers always win.
+      # Split per entrypoint because the internal one needs TLS and the tunnel one is plain HTTP.
+      - traefik.http.routers.error-pages-secure.rule=HostRegexp(`.+`)
+      - traefik.http.routers.error-pages-secure.priority=1
+      - traefik.http.routers.error-pages-secure.entrypoints=web-secure
+      - traefik.http.routers.error-pages-secure.tls=true
+      - traefik.http.routers.error-pages-secure.service=error-pages
+      - traefik.http.routers.error-pages-secure.middlewares=error-pages
+      - traefik.http.routers.error-pages-cf.rule=HostRegexp(`.+`)
+      - traefik.http.routers.error-pages-cf.priority=1
+      - traefik.http.routers.error-pages-cf.entrypoints=cloudflared
+      - traefik.http.routers.error-pages-cf.service=error-pages
+      - traefik.http.routers.error-pages-cf.middlewares=error-pages
+
   #DOWNLOAD STACK
   homarr:
     container_name: homarr
@@ -735,9 +813,15 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.dnd.rule=(Host(`${DND_HOSTNAME}`))
+      - traefik.http.routers.dnd.entrypoints=web-secure
       - traefik.http.routers.dnd.tls=true
       - traefik.http.routers.dnd.tls.certresolver=myresolver
       - traefik.http.services.dnd.loadbalancer.server.port=80
+      # External access via Cloudflare tunnel, behind Google forward-auth + custom error pages
+      - traefik.http.routers.dnd-ext.rule=(Host(`${DND_EXTERNAL_HOSTNAME}`))
+      - traefik.http.routers.dnd-ext.entrypoints=cloudflared
+      - traefik.http.routers.dnd-ext.service=dnd
+      - traefik.http.routers.dnd-ext.middlewares=error-pages,forward-auth
     volumes:
       - '${CONFIG_ROOT:-.}/5etools:/usr/local/apache2/htdocs'
 
@@ -760,9 +844,15 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.milhas.rule=(Host(`${MILHAS_HOSTNAME}`))
+      - traefik.http.routers.milhas.entrypoints=web-secure
       - traefik.http.routers.milhas.tls=true
       - traefik.http.routers.milhas.tls.certresolver=myresolver
       - traefik.http.services.milhas.loadbalancer.server.port=8000
+      # External access via Cloudflare tunnel, behind Google forward-auth + custom error pages
+      - traefik.http.routers.milhas-ext.rule=(Host(`${MILHAS_EXTERNAL_HOSTNAME}`))
+      - traefik.http.routers.milhas-ext.entrypoints=cloudflared
+      - traefik.http.routers.milhas-ext.service=milhas
+      - traefik.http.routers.milhas-ext.middlewares=error-pages,forward-auth
 
 networks:
   default:

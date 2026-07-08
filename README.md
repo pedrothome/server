@@ -342,6 +342,71 @@ in your local DNS resolver such as Pi-Hole.
 This way, when connected to the local network, the NAS is accessible directly from the private IP,
 and from the outside you need to connect to Tailscale first, then the NAS domain will be accessible.
 
+## External Access via Cloudflare Tunnel
+
+This is an alternative to Tailscale for exposing **selected** apps to the public internet, protected by
+Google login. It is defined in `docker-compose.mine.yml` and made of three services:
+
+- **`cloudflared`** — an outbound-only tunnel to Cloudflare. No ports are opened on your router.
+- **`traefik-forward-auth`** — Google OAuth gate; only e-mails in `FORWARD_AUTH_WHITELIST` get through.
+- **`error-pages`** — a catch-all that renders styled pages for `404` (unknown URL) and `401`
+  (logged in but not allowed).
+
+### How it works
+
+External traffic uses a **different URL** than internal: internal apps stay on
+`*.local.gabiepedro.com.br` (served over HTTPS by Traefik + Let's Encrypt), while externally-exposed
+apps get a single-level hostname under the zone apex, e.g. `milhas.gabiepedro.com.br` and
+`5etools.gabiepedro.com.br`.
+
+```
+Browser ──TLS──▶ Cloudflare edge ──tunnel──▶ cloudflared ──http──▶ traefik:8000 (cloudflared entrypoint)
+                                                                        │
+                                                        error-pages ◀── ├── forward-auth (Google) ──▶ app
+```
+
+TLS is terminated at Cloudflare's edge, so external hostnames **must be single-level**
+(`app.gabiepedro.com.br`) to be covered by the free Universal SSL certificate. Deeper names like
+`app.sub.gabiepedro.com.br` would require the paid Advanced Certificate Manager.
+
+Traefik receives tunnel traffic on a dedicated, **host-unpublished** entrypoint (`:8000`), keeping
+external routers isolated from the internal `web-secure` entrypoint.
+
+### One-time setup
+
+1. **Cloudflare Zero Trust → Networks → Tunnels**: create a tunnel and copy its token into
+   `CLOUDFLARE_TUNNEL_TOKEN`. Under the tunnel's **Public Hostnames**, add one entry per app you expose
+   (recommended over a wildcard, so you don't accidentally expose internal names):
+   - `5etools.gabiepedro.com.br` → `HTTP` → `traefik:8000`
+   - `milhas.gabiepedro.com.br` → `HTTP` → `traefik:8000`
+   - `auth.gabiepedro.com.br` → `HTTP` → `traefik:8000`
+2. **Google Cloud Console → Credentials**: create an OAuth *Web* client. Set the authorized redirect URI
+   to `https://auth.gabiepedro.com.br/_oauth`. Put the values in `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+3. Set `FORWARD_AUTH_SECRET` (`openssl rand -hex 24`) and `FORWARD_AUTH_WHITELIST` (comma-separated e-mails).
+4. `docker compose up -d`.
+
+### Exposing another app
+
+Add a second router to the app's existing labels, pointing at the same service but on the `cloudflared`
+entrypoint with the auth + error middlewares (example from `5etools`):
+
+```yaml
+- traefik.http.routers.dnd-ext.rule=(Host(`${DND_EXTERNAL_HOSTNAME}`))
+- traefik.http.routers.dnd-ext.entrypoints=cloudflared
+- traefik.http.routers.dnd-ext.service=dnd
+- traefik.http.routers.dnd-ext.middlewares=error-pages,forward-auth
+```
+
+Then add its hostname to `.env` and to the tunnel's Public Hostnames.
+
+### Exposing an app *without* Google auth
+
+Drop `forward-auth` from the middlewares list, keeping only `error-pages`:
+
+```yaml
+- traefik.http.routers.someapp-ext.middlewares=error-pages
+```
+
 ## Optional Services
 
 Optional services are not launched by default and enabled by appending their profile name to the
