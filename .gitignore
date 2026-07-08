@@ -42,3 +42,6 @@ docker-compose.override.yml
 /autobrr
 !/cleanuparr/blacklist.json
 !/cleanuparr/logs/.gitkeep
+/suggestarr
+/jellyseerr
+/custom_applications
